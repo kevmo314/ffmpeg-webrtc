@@ -4,6 +4,14 @@ It's ffmpeg with [WHIP](https://datatracker.ietf.org/doc/draft-ietf-wish-whip/) 
 
 ## Compiling
 
+Build the Rust library:
+
+```
+cd libavformat/webrtc && cargo build && cd -
+```
+
+Build FFmpeg:
+
 ```
 ./configure --extra-ldflags="-L./libavformat/webrtc/target/debug -lwebrtc_rs_lib"
 make -j
