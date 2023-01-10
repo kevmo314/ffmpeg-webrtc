@@ -1,0 +1,23 @@
+[package]
+name = "webrtc-rs-lib"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+webrtc = "0.6.0"
+tokio = { version = "1.16.1", features = ["full"] }
+anyhow = "1.0.45"
+bytes = "1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_derive = "1.0"
+base64 = "0.13.0"
+reqwest = { version = "0.11.7", default-features = false, features = ["json", "rustls-tls"] }
+log = { version = "0.4.17", features = ["std"] }
+
+[lib]
+crate-type=["staticlib"]
+
+[build-dependencies]
+cbindgen = "0.24.3"
