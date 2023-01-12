@@ -155,16 +155,6 @@ static const AVClass whip_muxer_class = {
     .version = LIBAVUTIL_VERSION_INT,
 };
 
-static int whip_query_codec(enum AVCodecID codec_id, int std_compliance)
-{
-    enum AVMediaType type = avcodec_get_type(codec_id);
-    // support any audio and video for now.
-    if (type == AVMEDIA_TYPE_VIDEO || type == AVMEDIA_TYPE_AUDIO)
-        return 1;
-
-    return 0;
-}
-
 // exposed as a muxer because there's no valid muxers.
 const AVOutputFormat ff_whip_muxer = {
     .name = "whip",
@@ -172,14 +162,13 @@ const AVOutputFormat ff_whip_muxer = {
     .mime_type = "video/x-whip",
     .extensions = "whip",
     .priv_data_size = sizeof(WHIPMuxContext),
-    .audio_codec = CONFIG_LIBVORBIS_ENCODER ? AV_CODEC_ID_VORBIS : AV_CODEC_ID_AC3,
-    .video_codec = CONFIG_LIBX264_ENCODER ? AV_CODEC_ID_H264 : AV_CODEC_ID_MPEG4,
+    .audio_codec = AV_CODEC_ID_OPUS,
+    .video_codec = AV_CODEC_ID_H264,
     .init = whip_init,
     .deinit = whip_deinit,
     .write_header = whip_write_header,
     .write_packet = whip_write_packet,
     .write_trailer = whip_write_trailer,
-    .flags = AVFMT_NOFILE | AVFMT_GLOBALHEADER,
-    .query_codec = whip_query_codec,
+    .flags = AVFMT_NOFILE,
     .priv_class = &whip_muxer_class,
 };
