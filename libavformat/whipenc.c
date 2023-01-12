@@ -65,7 +65,7 @@ static void whip_deinit(AVFormatContext *s)
 static int whip_write_header(AVFormatContext *s)
 {
     WHIPMuxContext *output = s->priv_data;
-    const char *key;
+    const char *key = "";
 
     output->obsrtc = obs_webrtc_output_new();
     if (!output->obsrtc)
