@@ -142,7 +142,7 @@ static int whip_init(struct AVFormatContext *s)
     if (pthread_mutex_init(&output->write_mutex, NULL) != 0)
         goto fail;
 
-    return output;
+    return 0;
 fail:
     pthread_mutex_destroy(&output->write_mutex);
     av_free(output);
