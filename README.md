@@ -1,4 +1,4 @@
-# kevmo314/ffmpeg-whip
+# kevmo314/ffmpeg-webrtc
 
 It's ffmpeg with WebRTC support! This fork uses [webrtc-rs](https://github.com/webrtc-rs/webrtc) to publish WebRTC streams using the [WHIP](https://datatracker.ietf.org/doc/draft-ietf-wish-whip/) protocol.
 
