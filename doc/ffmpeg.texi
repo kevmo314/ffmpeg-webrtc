@@ -877,8 +877,19 @@ This is not the same as the @option{-framerate} option used for some input forma
 like image2 or v4l2 (it used to be the same in older versions of FFmpeg).
 If in doubt use @option{-framerate} instead of the input option @option{-r}.
 
-As an output option, duplicate or drop input frames to achieve constant output
+As an output option:
+@table @option
+@item video encoding
+Duplicate or drop frames right before encoding them to achieve constant output
 frame rate @var{fps}.
+
+@item video streamcopy
+Indicate to the muxer that @var{fps} is the stream frame rate. No data is
+dropped or duplicated in this case. This may produce invalid files if @var{fps}
+does not match the actual stream frame rate as determined by packet timestamps.
+See also the @code{setts} bitstream filter.
+
+@end table
 
 @item -fpsmax[:@var{stream_specifier}] @var{fps} (@emph{output,per-stream})
 Set maximum frame rate (Hz value, fraction or abbreviation).
@@ -1011,12 +1022,6 @@ list separated with slashes. Two first values are the beginning and
 end frame numbers, last one is quantizer to use if positive, or quality
 factor if negative.
 
-@item -ilme
-Force interlacing support in encoder (MPEG-2 and MPEG-4 only).
-Use this option if your input file is interlaced and you want
-to keep the interlaced format for minimum losses.
-The alternative is to deinterlace the input stream by use of a filter
-such as @code{yadif} or @code{bwdif}, but deinterlacing introduces losses.
 @item -psnr
 Calculate PSNR of compressed frames. This option is deprecated, pass the
 PSNR flag to the encoder instead, using @code{-flags +psnr}.

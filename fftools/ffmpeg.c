@@ -1030,6 +1030,79 @@ static void do_subtitle_out(OutputFile *of,
     }
 }
 
+/* Convert frame timestamps to the encoder timebase and decide how many times
+ * should this (and possibly previous) frame be repeated in order to conform to
+ * desired target framerate (if any).
+ */
+static void video_sync_process(OutputFile *of, OutputStream *ost,
+                               AVFrame *next_picture, double duration,
+                               int64_t *nb_frames, int64_t *nb_frames_prev)
+{
+    double delta0, delta;
+
+    double sync_ipts = adjust_frame_pts_to_encoder_tb(of, ost, next_picture);
+    /* delta0 is the "drift" between the input frame (next_picture) and
+     * where it would fall in the output. */
+    delta0 = sync_ipts - ost->next_pts;
+    delta  = delta0 + duration;
+
+    // tracks the number of times the PREVIOUS frame should be duplicated,
+    // mostly for variable framerate (VFR)
+    *nb_frames_prev = 0;
+    /* by default, we output a single frame */
+    *nb_frames = 1;
+
+    if (delta0 < 0 &&
+        delta > 0 &&
+        ost->vsync_method != VSYNC_PASSTHROUGH &&
+        ost->vsync_method != VSYNC_DROP) {
+        if (delta0 < -0.6) {
+            av_log(NULL, AV_LOG_VERBOSE, "Past duration %f too large\n", -delta0);
+        } else
+            av_log(NULL, AV_LOG_DEBUG, "Clipping frame in rate conversion by %f\n", -delta0);
+        sync_ipts = ost->next_pts;
+        duration += delta0;
+        delta0 = 0;
+    }
+
+    switch (ost->vsync_method) {
+    case VSYNC_VSCFR:
+        if (ost->vsync_frame_number == 0 && delta0 >= 0.5) {
+            av_log(NULL, AV_LOG_DEBUG, "Not duplicating %d initial frames\n", (int)lrintf(delta0));
+            delta = duration;
+            delta0 = 0;
+            ost->next_pts = llrint(sync_ipts);
+        }
+    case VSYNC_CFR:
+        // FIXME set to 0.5 after we fix some dts/pts bugs like in avidec.c
+        if (frame_drop_threshold && delta < frame_drop_threshold && ost->vsync_frame_number) {
+            *nb_frames = 0;
+        } else if (delta < -1.1)
+            *nb_frames = 0;
+        else if (delta > 1.1) {
+            *nb_frames = llrintf(delta);
+            if (delta0 > 1.1)
+                *nb_frames_prev = llrintf(delta0 - 0.6);
+        }
+        next_picture->duration = 1;
+        break;
+    case VSYNC_VFR:
+        if (delta <= -0.6)
+            *nb_frames = 0;
+        else if (delta > 0.6)
+            ost->next_pts = llrint(sync_ipts);
+        next_picture->duration = duration;
+        break;
+    case VSYNC_DROP:
+    case VSYNC_PASSTHROUGH:
+        next_picture->duration = duration;
+        ost->next_pts = llrint(sync_ipts);
+        break;
+    default:
+        av_assert0(0);
+    }
+}
+
 static enum AVPictureType forced_kf_apply(KeyframeForceCtx *kf, AVRational tb,
                                           const AVFrame *in_picture, int dup_idx)
 {
@@ -1088,8 +1161,7 @@ static void do_video_out(OutputFile *of,
     int ret;
     AVCodecContext *enc = ost->enc_ctx;
     AVRational frame_rate;
-    int64_t nb_frames, nb0_frames, i;
-    double delta, delta0;
+    int64_t nb_frames, nb_frames_prev, i;
     double duration = 0;
     InputStream *ist = ost->ist;
     AVFilterContext *filter = ost->filter->filter;
@@ -1114,103 +1186,46 @@ static void do_video_out(OutputFile *of,
 
     if (!next_picture) {
         //end, flushing
-        nb0_frames = nb_frames = mid_pred(ost->last_nb0_frames[0],
-                                          ost->last_nb0_frames[1],
-                                          ost->last_nb0_frames[2]);
+        nb_frames_prev = nb_frames = mid_pred(ost->last_nb0_frames[0],
+                                              ost->last_nb0_frames[1],
+                                              ost->last_nb0_frames[2]);
     } else {
-        double sync_ipts = adjust_frame_pts_to_encoder_tb(of, ost, next_picture);
-        /* delta0 is the "drift" between the input frame (next_picture) and
-         * where it would fall in the output. */
-        delta0 = sync_ipts - ost->next_pts;
-        delta  = delta0 + duration;
-
-        /* by default, we output a single frame */
-        nb0_frames = 0; // tracks the number of times the PREVIOUS frame should be duplicated, mostly for variable framerate (VFR)
-        nb_frames = 1;
-
-        if (delta0 < 0 &&
-            delta > 0 &&
-            ost->vsync_method != VSYNC_PASSTHROUGH &&
-            ost->vsync_method != VSYNC_DROP) {
-            if (delta0 < -0.6) {
-                av_log(NULL, AV_LOG_VERBOSE, "Past duration %f too large\n", -delta0);
-            } else
-                av_log(NULL, AV_LOG_DEBUG, "Clipping frame in rate conversion by %f\n", -delta0);
-            sync_ipts = ost->next_pts;
-            duration += delta0;
-            delta0 = 0;
-        }
-
-        switch (ost->vsync_method) {
-        case VSYNC_VSCFR:
-            if (ost->vsync_frame_number == 0 && delta0 >= 0.5) {
-                av_log(NULL, AV_LOG_DEBUG, "Not duplicating %d initial frames\n", (int)lrintf(delta0));
-                delta = duration;
-                delta0 = 0;
-                ost->next_pts = llrint(sync_ipts);
-            }
-        case VSYNC_CFR:
-            // FIXME set to 0.5 after we fix some dts/pts bugs like in avidec.c
-            if (frame_drop_threshold && delta < frame_drop_threshold && ost->vsync_frame_number) {
-                nb_frames = 0;
-            } else if (delta < -1.1)
-                nb_frames = 0;
-            else if (delta > 1.1) {
-                nb_frames = llrintf(delta);
-                if (delta0 > 1.1)
-                    nb0_frames = llrintf(delta0 - 0.6);
-            }
-            next_picture->duration = 1;
-            break;
-        case VSYNC_VFR:
-            if (delta <= -0.6)
-                nb_frames = 0;
-            else if (delta > 0.6)
-                ost->next_pts = llrint(sync_ipts);
-            next_picture->duration = duration;
-            break;
-        case VSYNC_DROP:
-        case VSYNC_PASSTHROUGH:
-            next_picture->duration = duration;
-            ost->next_pts = llrint(sync_ipts);
-            break;
-        default:
-            av_assert0(0);
-        }
+        video_sync_process(of, ost, next_picture, duration,
+                           &nb_frames, &nb_frames_prev);
     }
 
     memmove(ost->last_nb0_frames + 1,
             ost->last_nb0_frames,
             sizeof(ost->last_nb0_frames[0]) * (FF_ARRAY_ELEMS(ost->last_nb0_frames) - 1));
-    ost->last_nb0_frames[0] = nb0_frames;
+    ost->last_nb0_frames[0] = nb_frames_prev;
 
-    if (nb0_frames == 0 && ost->last_dropped) {
+    if (nb_frames_prev == 0 && ost->last_dropped) {
         nb_frames_drop++;
         av_log(NULL, AV_LOG_VERBOSE,
                "*** dropping frame %"PRId64" from stream %d at ts %"PRId64"\n",
                ost->vsync_frame_number, ost->st->index, ost->last_frame->pts);
     }
-    if (nb_frames > (nb0_frames && ost->last_dropped) + (nb_frames > nb0_frames)) {
+    if (nb_frames > (nb_frames_prev && ost->last_dropped) + (nb_frames > nb_frames_prev)) {
         if (nb_frames > dts_error_threshold * 30) {
             av_log(NULL, AV_LOG_ERROR, "%"PRId64" frame duplication too large, skipping\n", nb_frames - 1);
             nb_frames_drop++;
             return;
         }
-        nb_frames_dup += nb_frames - (nb0_frames && ost->last_dropped) - (nb_frames > nb0_frames);
+        nb_frames_dup += nb_frames - (nb_frames_prev && ost->last_dropped) - (nb_frames > nb_frames_prev);
         av_log(NULL, AV_LOG_VERBOSE, "*** %"PRId64" dup!\n", nb_frames - 1);
         if (nb_frames_dup > dup_warning) {
             av_log(NULL, AV_LOG_WARNING, "More than %"PRIu64" frames duplicated\n", dup_warning);
             dup_warning *= 10;
         }
     }
-    ost->last_dropped = nb_frames == nb0_frames && next_picture;
+    ost->last_dropped = nb_frames == nb_frames_prev && next_picture;
     ost->kf.dropped_keyframe = ost->last_dropped && next_picture && next_picture->key_frame;
 
     /* duplicates frame if needed */
     for (i = 0; i < nb_frames; i++) {
         AVFrame *in_picture;
 
-        if (i < nb0_frames && ost->last_frame->buf[0]) {
+        if (i < nb_frames_prev && ost->last_frame->buf[0]) {
             in_picture = ost->last_frame;
         } else
             in_picture = next_picture;
@@ -2017,11 +2032,6 @@ static int decode_audio(InputStream *ist, AVPacket *pkt, int *got_output,
     if (ret < 0)
         *decode_failed = 1;
 
-    if (ret >= 0 && avctx->sample_rate <= 0) {
-        av_log(avctx, AV_LOG_ERROR, "Sample rate %d invalid\n", avctx->sample_rate);
-        ret = AVERROR_INVALIDDATA;
-    }
-
     if (ret != AVERROR_EOF)
         check_decode_result(ist, got_output, ret);
 
@@ -2034,9 +2044,9 @@ static int decode_audio(InputStream *ist, AVPacket *pkt, int *got_output,
     /* increment next_dts to use for the case where the input stream does not
        have timestamps or there are multiple frames in the packet */
     ist->next_pts += ((int64_t)AV_TIME_BASE * decoded_frame->nb_samples) /
-                     avctx->sample_rate;
+                     decoded_frame->sample_rate;
     ist->next_dts += ((int64_t)AV_TIME_BASE * decoded_frame->nb_samples) /
-                     avctx->sample_rate;
+                     decoded_frame->sample_rate;
 
     if (decoded_frame->pts != AV_NOPTS_VALUE) {
         decoded_frame_tb   = ist->st->time_base;
@@ -2054,8 +2064,10 @@ static int decode_audio(InputStream *ist, AVPacket *pkt, int *got_output,
         ist->prev_pkt_pts = pkt->pts;
     if (decoded_frame->pts != AV_NOPTS_VALUE)
         decoded_frame->pts = av_rescale_delta(decoded_frame_tb, decoded_frame->pts,
-                                              (AVRational){1, avctx->sample_rate}, decoded_frame->nb_samples, &ist->filter_in_rescale_delta_last,
-                                              (AVRational){1, avctx->sample_rate});
+                                              (AVRational){1, decoded_frame->sample_rate},
+                                              decoded_frame->nb_samples,
+                                              &ist->filter_in_rescale_delta_last,
+                                              (AVRational){1, decoded_frame->sample_rate});
     ist->nb_samples = decoded_frame->nb_samples;
     err = send_frame_to_filters(ist, decoded_frame);
 
@@ -3800,7 +3812,8 @@ static int transcode(void)
         packets_written = atomic_load(&ost->packets_written);
         total_packets_written += packets_written;
         if (!packets_written && (abort_on_flags & ABORT_ON_FLAG_EMPTY_OUTPUT_STREAM)) {
-            av_log(NULL, AV_LOG_FATAL, "Empty output on stream %d.\n", i);
+            av_log(NULL, AV_LOG_FATAL, "Empty output on stream %d:%d.\n",
+                   ost->file_index, ost->index);
             exit_program(1);
         }
     }

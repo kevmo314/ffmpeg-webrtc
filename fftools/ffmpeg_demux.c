@@ -883,9 +883,10 @@ int ifile_open(const OptionsContext *o, const char *filename)
     }
 
     if (!strcmp(filename, "-"))
-        filename = "pipe:";
+        filename = "fd:";
 
     stdin_interaction &= strncmp(filename, "pipe:", 5) &&
+                         strcmp(filename, "fd:") &&
                          strcmp(filename, "/dev/stdin");
 
     /* get default parameters from command line */
