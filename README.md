@@ -2,6 +2,8 @@
 
 It's ffmpeg with WebRTC support! This fork uses [webrtc-rs](https://github.com/webrtc-rs/webrtc) to publish WebRTC streams using the [WHIP](https://datatracker.ietf.org/doc/draft-ietf-wish-whip/) protocol.
 
+This work is inspired by a [pull request](https://github.com/obsproject/obs-studio/pull/7926) to add WebRTC support to OBS Studio, which also did most of the heavy lifting for this implementation.
+
 ## Compiling
 
 Build the Rust library:
