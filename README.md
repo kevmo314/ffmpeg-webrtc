@@ -15,6 +15,8 @@ Build FFmpeg:
 make -j
 ```
 
+The build step requires that Rust is installed, as it will call `cargo build` to build the WebRTC bindings.
+
 ## Running
 
 A WHIP server is necessary. If you want one to test with, check out [TinyWHIP](https://github.com/kevmo314/tinywhip).
