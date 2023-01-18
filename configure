@@ -327,6 +327,7 @@ External library support:
                            on OSX if openssl and gnutls are not used [autodetect]
   --enable-vapoursynth     enable VapourSynth demuxer [no]
   --disable-vulkan         disable Vulkan code [autodetect]
+  --disable-whip           disable WebRTC WHIP muxer [autodetect]
   --disable-xlib           disable xlib [autodetect]
   --disable-zlib           disable zlib [autodetect]
 
@@ -1873,6 +1874,7 @@ EXTERNAL_LIBRARY_LIST="
     openssl
     pocketsphinx
     vapoursynth
+    whip
 "
 
 HWACCEL_AUTODETECT_LIBRARY_LIST="
@@ -3496,6 +3498,8 @@ wav_demuxer_select="riffdec"
 wav_muxer_select="riffenc"
 webm_chunk_muxer_select="webm_muxer"
 webm_dash_manifest_demuxer_select="matroska_demuxer"
+whip_muxer_select="whipenc"
+whip_muxer_extralibs="-lwebrtc_rs_lib"
 wtv_demuxer_select="mpegts_demuxer riffdec"
 wtv_muxer_select="mpegts_muxer riffenc"
 xmv_demuxer_select="riffdec"
@@ -7042,6 +7046,10 @@ fi
 enabled amf &&
     check_cpp_condition amf "AMF/core/Version.h" \
         "(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x0001000400090000"
+
+if enabled whip_muxer; then
+    add_ldflags '-L\$(SRC_PATH)/libavformat/webrtc/target/debug'
+fi
 
 # Funny iconv installations are not unusual, so check it after all flags have been set
 if enabled libc_iconv; then

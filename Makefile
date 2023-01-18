@@ -37,7 +37,7 @@ DATA_FILES := $(wildcard $(SRC_PATH)/presets/*.ffpreset) $(SRC_PATH)/doc/ffprobe
 SKIPHEADERS = compat/w32pthreads.h
 
 # first so "all" becomes default target
-all: all-yes
+all: libavformat_webrtc all-yes
 
 include $(SRC_PATH)/tools/Makefile
 include $(SRC_PATH)/ffbuild/common.mak
@@ -48,6 +48,9 @@ FF_STATIC_DEP_LIBS := $(STATIC_DEP_LIBS)
 
 $(TOOLS): %$(EXESUF): %.o
 	$(LD) $(LDFLAGS) $(LDEXEFLAGS) $(LD_O) $^ $(EXTRALIBS-$(*F)) $(EXTRALIBS) $(ELIBS)
+
+libavformat_webrtc:
+	$(if $(CONFIG_WHIP_MUXER),cargo build --manifest-path=libavformat/webrtc/Cargo.toml)
 
 target_dec_%_fuzzer$(EXESUF): target_dec_%_fuzzer.o $(FF_DEP_LIBS)
 	$(LD) $(LDFLAGS) $(LDEXEFLAGS) $(LD_O) $^ $(ELIBS) $(FF_EXTRALIBS) $(LIBFUZZER_PATH)
@@ -161,6 +164,7 @@ clean::
 	$(RM) $(addprefix compat/,$(CLEANSUFFIXES)) $(addprefix compat/*/,$(CLEANSUFFIXES)) $(addprefix compat/*/*/,$(CLEANSUFFIXES))
 	$(RM) -r coverage-html
 	$(RM) -rf coverage.info coverage.info.in lcov
+	$(RM) -rf libavformat/webrtc/target
 
 distclean:: clean
 	$(RM) .version config.asm config.h config_components.h mapfile  \

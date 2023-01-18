@@ -6,16 +6,10 @@ This work is inspired by a [pull request](https://github.com/obsproject/obs-stud
 
 ## Compiling
 
-Build the Rust library:
-
-```
-cd libavformat/webrtc && cargo build && cd -
-```
-
 Build FFmpeg:
 
 ```
-./configure --extra-ldflags="-L$(pwd)/libavformat/webrtc/target/debug" --extra-libs="-lwebrtc_rs_lib"
+./configure
 make -j
 ```
 
